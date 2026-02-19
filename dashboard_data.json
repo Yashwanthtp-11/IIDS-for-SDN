@@ -1,0 +1,1 @@
+{"traffic_stats": {"bytes_per_sec": 0.0}, "alerts": [{"timestamp": "23:52:51", "src_ip": "10.0.0.2", "dst_ip": "10.0.0.1", "attack_type": "DDoS/DoS", "action": "Blocked"}, {"timestamp": "23:52:51", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2", "attack_type": "DDoS/DoS", "action": "Blocked"}]}

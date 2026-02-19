@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDN IDS Dashboard</title>
+    <!-- 1. Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Load Chart.js for the traffic chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Use a common sans-serif font */
+        body { font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 p-8">
+
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Header & Status -->
+        <div class="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-white">SDN Intelligent IDS Dashboard</h1>
+            <div class="flex items-center space-x-3">
+                <span class="text-lg">Network Status:</span>
+                <div id="status-indicator" class="w-6 h-6 bg-green-500 rounded-full shadow-md animate-pulse"></div>
+                <span id="status-text" class.font-medium text-green-400">Normal</span>
+            </div>
+        </div>
+
+        <!-- Traffic Chart -->
+        <div class="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4 text-white">Live Traffic Magnitude (Bytes/sec)</h2>
+            <div class="h-80">
+                <canvas id="trafficChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Live Alert Log -->
+        <div class="lg:col-span-1 bg-gray-800 p-6 rounded-lg shadow-lg max-h-[440px] overflow-y-auto">
+            <h2 class="text-2xl font-semibold mb-4 text-white">Live Alert Log</h2>
+            <div id="alert-log" class="space-y-3">
+                <p class="text-gray-400" id="alert-placeholder">No alerts detected yet. Monitoring...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. Chart.js Setup ---
+        const ctx = document.getElementById('trafficChart').getContext('2d');
+        const trafficChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(30).fill(''), // 30 data points
+                datasets: [{
+                    label: 'Bytes per Second',
+                    data: Array(30).fill(0), // Start with all zeros
+                    borderColor: 'rgb(52, 211, 153)', // Emerald green
+                    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#9CA3AF' },
+                        grid: { color: 'rgba(156, 163, 175, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#9CA3AF' },
+                        grid: { color: 'rgba(156, 163, 175, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                },
+                maintainAspectRatio: false
+            }
+        });
+
+        // --- 2. DOM Elements ---
+        const alertLog = document.getElementById('alert-log');
+        const alertPlaceholder = document.getElementById('alert-placeholder');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+
+        // --- 3. Data Fetching ---
+        const API_BASE_URL = 'http://127.0.0.1:5000'; // Talk to Flask on port 5000
+        let noAlertsCounter = 0;
+        let isAttackActive = false; // State to track if an attack is ongoing
+
+        async function fetchData() {
+            try {
+                // Fetch from the new '/api/data' endpoint
+                const response = await fetch(API_BASE_URL + '/api/data');
+                if (!response.ok) {
+                    throw new Error('Server offline or error');
+                }
+                const data = await response.json();
+
+                // --- Update Traffic Chart ---
+                const trafficData = data.traffic_stats;
+                const chartData = trafficChart.data.datasets[0].data;
+                chartData.push(parseFloat(trafficData.bytes_per_sec).toFixed(2));
+                if (chartData.length > 30) {
+                    chartData.shift();
+                }
+                trafficChart.update('quiet');
+
+                // --- Update Alerts & Status ---
+                const alerts = data.alerts;
+                
+                // --- THIS IS THE FIX for the "vanishing alert" ---
+                // If there are alerts in the JSON, it means an attack is CURRENTLY happening
+                if (alerts && alerts.length > 0) {
+                    noAlertsCounter = 0; // Reset counter
+                    isAttackActive = true; // Set attack to active
+
+                    // Set status to red
+                    statusIndicator.classList.remove('bg-green-500', 'animate-pulse');
+                    statusIndicator.classList.add('bg-red-500', 'animate-none'); // Solid red
+                    statusText.classList.remove('text-green-400');
+                    statusText.classList.add('text-red-400');
+                    statusText.innerText = "Attack Detected";
+
+                    // Rebuild the alert log from the persistent list
+                    alertLog.innerHTML = ''; // Clear old alerts
+                    alerts.forEach(alert => {
+                        const alertEl = document.createElement('div');
+                        alertEl.className = 'bg-red-900 border-l-4 border-red-500 p-3 rounded-r-lg shadow-md';
+                        alertEl.innerHTML = `
+                            <p class="font-bold text-red-300">ATTACK: ${alert.attack_type}</p>
+                            <p class="text-sm text-gray-200">
+                                <span class.font-medium">${alert.src_ip}</span> -> 
+                                <span class.font-medium">${alert.dst_ip}</span>
+                            </p>
+                            <p class.text-xs text-gray-400">${alert.timestamp} | Action: ${alert.action}</p>
+                        `;
+                        alertLog.appendChild(alertEl);
+                    });
+                } 
+                // If the file is empty AND an attack was *just* active
+                else if (isAttackActive) {
+                    // This means the attack just stopped
+                    isAttackActive = false;
+                    statusIndicator.classList.remove('bg-red-500', 'animate-none');
+                    statusIndicator.classList.add('bg-green-500', 'animate-pulse');
+                    statusText.classList.remove('text-red-400');
+                    statusText.classList.add('text-green-400');
+                    statusText.innerText = "Normal";
+                    // We *keep* the old logs visible, but add a "clear" message
+                    const clearEl = document.createElement('p');
+                    clearEl.className = "text-green-400 font-medium text-center p-2";
+                    clearEl.innerText = "--- Attack Stopped ---";
+                    alertLog.prepend(clearEl);
+                }
+
+            } catch (e) {
+                console.error("Error fetching data:", e);
+                // Handle server down error
+                statusIndicator.classList.remove('bg-green-500');
+                statusIndicator.classList.add('bg-gray-500');
+                statusText.classList.remove('text-green-400');
+                statusText.classList.add('text-gray-400');
+                statusText.innerText = "Server Offline";
+                alertLog.innerHTML = '<p class="text-gray-400" id="alert-placeholder">Connecting to dashboard server...</p>';
+            }
+        }
+        
+        setInterval(fetchData, 2000); // Poll every 2 seconds
+        fetchData(); // Initial fetch
+    </script>
+</body>
+</html>
