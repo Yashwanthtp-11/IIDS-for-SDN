@@ -26,7 +26,7 @@ Ensure you have Ubuntu (or a Linux-based OS) with the following installed:
 ### 2. Environment Setup
 Clone the repository and set up a virtual environment to keep your system clean:
 bash
-git clone [https://github.com/Yashwanthtp-11/sdn-ids-project.git] (https://Yashwanthtp-11/sdn-ids-project.git)
+git clone [https://github.com/Yashwanthtp-11/IIDS-for-SDN.git] (https://Yashwanthtp-11/IIDS-for-SDN.git)
 cd sdn-ids-project
 python3 -m venv sdn_env
 source sdn_env/bin/activate
